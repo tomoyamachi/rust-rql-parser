@@ -158,13 +158,13 @@ mod tests {
 
     #[test]
     fn next_token() {
-        let input = r#"and(eq(foo.bar,"test"),or(gt(speed.max,100),ge(speed.min,60.0))"#;
+        let input = r#"and(eq(foo,"test"),or(gt(bar.baz,100),ge(test,60.0))"#;
         let tests = [
             Token::And,
             Token::Lparen,
             Token::Eq,
             Token::Lparen,
-            Token::Ident("foo.bar".to_string()),
+            Token::Ident("foo".to_string()),
             Token::Comma,
             Token::Str("test".to_string()),
             Token::Rparen,
@@ -173,14 +173,14 @@ mod tests {
             Token::Lparen,
             Token::Gt,
             Token::Lparen,
-            Token::Ident("speed.max".to_string()),
+            Token::Ident("bar.baz".to_string()),
             Token::Comma,
             Token::Int("100".to_string()),
             Token::Rparen,
             Token::Comma,
             Token::Ge,
             Token::Lparen,
-            Token::Ident("speed.min".to_string()),
+            Token::Ident("test".to_string()),
             Token::Comma,
             Token::Float("60.0".to_string()),
             Token::Rparen,
@@ -191,8 +191,7 @@ mod tests {
 
         for (i, expected_token) in tests.iter().enumerate() {
             let token = lexer.next_token();
-
-            assert_eq!(&token, expected_token, "tests[{}] - token", i);
+            assert_eq!(&token, expected_token, "tests[{}]", i);
         }
     }
 }

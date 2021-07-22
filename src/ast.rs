@@ -3,8 +3,8 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Query {
-    And(Box<Query>, Box<Query>),
-    Or(Box<Query>, Box<Query>),
+    And(Vec<Query>),
+    Or(Vec<Query>),
     Sort(Prefix, Value),
     Filter(Infix, Value, Value),
     None,

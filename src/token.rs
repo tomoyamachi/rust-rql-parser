@@ -74,7 +74,7 @@ impl fmt::Display for Token {
             Comma => write!(f, ","),
             Lparen => write!(f, "("),
             Rparen => write!(f, ")"),
-            _ => write!(f, "undefined"),
+            _ => write!(f, "not implemented"),
         }
     }
 }

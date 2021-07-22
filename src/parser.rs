@@ -2,6 +2,8 @@ use crate::ast::{Infix, Query, Value};
 use crate::lexer::Lexer;
 use crate::parser::ParserError::*;
 use crate::token::Token;
+use log::{error, debug};
+use std::thread::sleep;
 
 type Result<T> = std::result::Result<T, ParserError>;
 
@@ -75,58 +77,37 @@ impl Parser {
     fn parse_and(&mut self) -> Result<Query> {
         self.expect_peek(Token::Lparen, ExpectedLparen)?;
         self.next_token();
-        let q1 = match &self.cur_token {
-            Token::Eq | Token::NotEq | Token::Le | Token::Ge | Token::Lt | Token::Gt => {
-                self.parse_filter()?
+        let mut queries: Vec<Query> = vec![];
+        while self.cur_token != Token::Rparen {
+            match self.parse_query() {
+                Ok(q) => queries.push(q),
+                Err(e) => return Err(e)
             }
-            Token::And => self.parse_and()?,
-            Token::Or => self.parse_or()?,
-            _ => return Err(ExpectedValueToken(self.cur_token.clone())),
-        };
-        log::debug!("{},{}", &self.cur_token, self.peek_token);
-        self.next_token();
-        self.next_token();
-        // Skip ")))," for nested query
-        while self.cur_token == Token::Rparen || self.cur_token == Token::Comma {
-            self.next_token();
+            if self.cur_token == Token::Comma {
+                self.next_token();
+            }
+            debug!("cur {}, {}", self.cur_token, self.peek_token);
         }
-        let q2 = match &self.cur_token {
-            Token::Eq | Token::NotEq | Token::Le | Token::Ge | Token::Lt | Token::Gt => {
-                self.parse_filter()?
-            }
-            Token::And => self.parse_and()?,
-            Token::Or => self.parse_or()?,
-            _ => return Err(ExpectedSomethingToken(self.cur_token.clone())),
-        };
-        return Ok(Query::And(Box::new(q1), Box::new(q2)));
+        self.next_token();
+        return Ok(Query::And(queries));
     }
 
     fn parse_or(&mut self) -> Result<Query> {
         self.expect_peek(Token::Lparen, ExpectedLparen)?;
         self.next_token();
-        let q1 = match &self.cur_token {
-            Token::Eq | Token::NotEq | Token::Le | Token::Ge | Token::Lt | Token::Gt => {
-                self.parse_filter()?
+        let mut queries: Vec<Query> = vec![];
+        while self.cur_token != Token::Rparen {
+            match self.parse_query() {
+                Ok(q) => queries.push(q),
+                Err(e) => return Err(e)
             }
-            Token::And => self.parse_and()?,
-            Token::Or => self.parse_or()?,
-            _ => return Err(ExpectedValueToken(self.cur_token.clone())),
-        };
-        log::debug!("{},{}", &self.cur_token, self.peek_token);
-        self.next_token();
-        self.next_token();
-        while self.cur_token == Token::Rparen || self.cur_token == Token::Comma {
-            self.next_token();
+            if self.cur_token == Token::Comma {
+                self.next_token();
+            }
+            debug!("cur {}, {}", self.cur_token, self.peek_token);
         }
-        let q2 = match &self.cur_token {
-            Token::Eq | Token::NotEq | Token::Le | Token::Ge | Token::Lt | Token::Gt => {
-                self.parse_filter()?
-            }
-            Token::And => self.parse_and()?,
-            Token::Or => self.parse_or()?,
-            _ => return Err(ExpectedSomethingToken(self.cur_token.clone())),
-        };
-        return Ok(Query::Or(Box::new(q1), Box::new(q2)));
+        self.next_token();
+        return Ok(Query::Or(queries));
     }
 
     fn parse_filter(&mut self) -> Result<Query> {
@@ -152,6 +133,7 @@ impl Parser {
             .ok_or_else(|| ExpectedValueToken(self.cur_token.clone()))?;
         let val = value(self)?;
         self.expect_peek(Token::Rparen, ExpectedRparen)?;
+        self.next_token();
         Ok(Query::Filter(filter, idnet, val))
     }
 
@@ -175,7 +157,7 @@ impl Parser {
         if let Token::Ident(ident) = &self.cur_token {
             Ok(ident.to_string())
         } else {
-            Err(ParserError::ExpectedIdentifierToken(self.cur_token.clone()))
+            Err(ExpectedIdentifierToken(self.cur_token.clone()))
         }
     }
 
@@ -183,10 +165,10 @@ impl Parser {
         if let Token::Int(int) = &self.cur_token {
             match int.parse() {
                 Ok(value) => Ok(Value::IntegerLiteral(value)),
-                Err(_) => Err(ParserError::ParseInt(int.to_string())),
+                Err(_) => Err(ParseInt(int.to_string())),
             }
         } else {
-            Err(ParserError::ExpectedIntegerToken(self.cur_token.clone()))
+            Err(ExpectedIntegerToken(self.cur_token.clone()))
         }
     }
 
@@ -194,10 +176,10 @@ impl Parser {
         if let Token::Float(float) = &self.cur_token {
             match float.parse() {
                 Ok(value) => Ok(Value::FloatLiteral(value)),
-                Err(_) => Err(ParserError::ParseFloat(float.to_string())),
+                Err(_) => Err(ParseFloat(float.to_string())),
             }
         } else {
-            Err(ParserError::ExpectedFloatToken(self.cur_token.clone()))
+            Err(ExpectedFloatToken(self.cur_token.clone()))
         }
     }
 
@@ -205,14 +187,14 @@ impl Parser {
         if let Token::Str(s) = &self.cur_token {
             Ok(Value::StringLiteral(s.to_string()))
         } else {
-            Err(ParserError::ExpectedStringToken(self.cur_token.clone()))
+            Err(ExpectedStringToken(self.cur_token.clone()))
         }
     }
     fn parse_boolean(&mut self) -> Result<Value> {
         match &self.cur_token {
             Token::True => Ok(Value::Boolean(true)),
             Token::False => Ok(Value::Boolean(false)),
-            _ => Err(ParserError::ExpectedBooleanToken(self.cur_token.clone())),
+            _ => Err(ExpectedBooleanToken(self.cur_token.clone())),
         }
     }
 
@@ -249,7 +231,7 @@ mod tests {
             Query::Filter(
                 Infix::Eq,
                 Value::Identifier("foo.bar".to_string()),
-                Value::StringLiteral("a".to_string())
+                Value::StringLiteral("a".to_string()),
             )
         );
     }
@@ -265,16 +247,17 @@ mod tests {
         assert_eq!(
             query.unwrap(),
             Query::And(
-                Box::new(Query::Filter(
+                vec![Query::Filter(
                     Infix::Eq,
                     Value::Identifier("speed.max".to_string()),
-                    Value::IntegerLiteral(100)
-                )),
-                Box::new(Query::Filter(
-                    Infix::Lt,
-                    Value::Identifier("speed.min".to_string()),
-                    Value::FloatLiteral(60.0)
-                ))
+                    Value::IntegerLiteral(100),
+                ),
+                     Query::Filter(
+                         Infix::Lt,
+                         Value::Identifier("speed.min".to_string()),
+                         Value::FloatLiteral(60.0),
+                     )
+                ],
             )
         );
     }
@@ -289,23 +272,25 @@ mod tests {
         assert_eq!(
             query.unwrap(),
             Query::And(
-                Box::new(Query::And(
-                    Box::new(Query::Filter(
+                vec![Query::And(
+                    vec![Query::Filter(
                         Infix::Eq,
                         Value::Identifier("speed.max".to_string()),
                         Value::IntegerLiteral(100),
-                    )),
-                    Box::new(Query::Filter(
-                        Infix::Lt,
-                        Value::Identifier("speed.min".to_string()),
-                        Value::FloatLiteral(60.0),
-                    )),
-                )),
-                Box::new(Query::Filter(
-                    Infix::Eq,
-                    Value::Identifier("name".to_string()),
-                    Value::StringLiteral("test".to_string())
-                ))
+                    ),
+                         Query::Filter(
+                             Infix::Lt,
+                             Value::Identifier("speed.min".to_string()),
+                             Value::FloatLiteral(60.0),
+                         ),
+                    ]
+                ),
+                     Query::Filter(
+                         Infix::Eq,
+                         Value::Identifier("name".to_string()),
+                         Value::StringLiteral("test".to_string()),
+                     )
+                ],
             )
         );
     }
@@ -320,30 +305,33 @@ mod tests {
         assert_eq!(
             query.unwrap(),
             Query::And(
-                Box::new(Query::Or(
-                    Box::new(Query::Filter(
-                        Infix::Eq,
-                        Value::Identifier("speed.max".to_string()),
-                        Value::IntegerLiteral(100),
-                    )),
-                    Box::new(Query::Filter(
-                        Infix::Lt,
-                        Value::Identifier("speed.min".to_string()),
-                        Value::FloatLiteral(60.0),
-                    )),
-                )),
-                Box::new(Query::Filter(
-                    Infix::Eq,
-                    Value::Identifier("name".to_string()),
-                    Value::StringLiteral("test".to_string())
-                ))
+                vec![Query::Or(
+                    vec![
+                        Query::Filter(
+                            Infix::Eq,
+                            Value::Identifier("speed.max".to_string()),
+                            Value::IntegerLiteral(100),
+                        ),
+                        Query::Filter(
+                            Infix::Lt,
+                            Value::Identifier("speed.min".to_string()),
+                            Value::FloatLiteral(60.0),
+                        ),
+                    ]
+                ),
+                     Query::Filter(
+                         Infix::Eq,
+                         Value::Identifier("name".to_string()),
+                         Value::StringLiteral("test".to_string()),
+                     )
+                ]
             )
         );
     }
 
     #[test]
     fn nest_mixed_query2() {
-        let input = "or(and(eq(speed.max,100),lt(speed.min, 60.0)),eq(name,\"test\"))";
+        let input = "or(and(eq(foo,100),lt(bar, 60.0)),eq(baz,\"test\"))";
         let lexer = Lexer::new(input.to_owned());
         let mut parser = Parser::new(lexer);
         let query = parser.parse_query();
@@ -351,23 +339,24 @@ mod tests {
         assert_eq!(
             query.unwrap(),
             Query::Or(
-                Box::new(Query::And(
-                    Box::new(Query::Filter(
+                vec![Query::And(
+                    vec![Query::Filter(
                         Infix::Eq,
-                        Value::Identifier("speed.max".to_string()),
+                        Value::Identifier("foo".to_string()),
                         Value::IntegerLiteral(100),
-                    )),
-                    Box::new(Query::Filter(
-                        Infix::Lt,
-                        Value::Identifier("speed.min".to_string()),
-                        Value::FloatLiteral(60.0),
-                    )),
-                )),
-                Box::new(Query::Filter(
-                    Infix::Eq,
-                    Value::Identifier("name".to_string()),
-                    Value::StringLiteral("test".to_string())
-                ))
+                    ),
+                         Query::Filter(
+                             Infix::Lt,
+                             Value::Identifier("bar".to_string()),
+                             Value::FloatLiteral(60.0),
+                         )]
+                ),
+                     Query::Filter(
+                         Infix::Eq,
+                         Value::Identifier("baz".to_string()),
+                         Value::StringLiteral("test".to_string()),
+                     ),
+                ]
             )
         );
     }
