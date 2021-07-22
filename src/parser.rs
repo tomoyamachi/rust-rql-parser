@@ -2,8 +2,7 @@ use crate::ast::{Infix, Query, Value};
 use crate::lexer::Lexer;
 use crate::parser::ParserError::*;
 use crate::token::Token;
-use log::{error, debug};
-use std::thread::sleep;
+use log::debug;
 
 type Result<T> = std::result::Result<T, ParserError>;
 
